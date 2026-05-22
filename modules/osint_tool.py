@@ -1,36 +1,35 @@
 import requests
 import threading
-from scan_logger import log_scan_start, log_profile_found, log_scan_error
+from core.logger import log_scan_start, log_profile_found, log_scan_error
+
 
 def check_platform(username, platform_name, url_template):
     url = url_template.format(username)
     try:
-        # Standard headers to simulate a clean browser session
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
             'Accept-Language': 'en-US,en;q=0.9'
         }
-        
         response = requests.get(url, headers=headers, timeout=5, allow_redirects=True)
-        
-        # Checking Instagram and other strict platforms based on specific response behaviors
+
         if platform_name == "Instagram":
             if response.status_code == 200 and "Login" not in response.url and "/p/" not in response.url:
-                log_profile_found(platform_name, url)
+                log_profile_found("osint", platform_name, url)
                 print(f"  [+] FOUND on {platform_name:<12} : {url}")
         else:
             if response.status_code == 200:
-                log_profile_found(platform_name, url)
+                log_profile_found("osint", platform_name, url)
                 print(f"  [+] FOUND on {platform_name:<12} : {url}")
 
     except requests.RequestException as e:
-        log_scan_error(str(e), platform_name)
+        log_scan_error("osint", str(e), platform_name)
+
 
 def main():
     print("=" * 60)
-    print("      EXPANDED OSINT USERNAME RECONNAISSANCE TOOL      ")
+    print("       EXPANDED OSINT USERNAME RECONNAISSANCE TOOL")
     print("=" * 60)
-    
+
     username = input("Enter target username to scan: ").strip()
     if not username:
         print("  [!] Error: Username cannot be empty.")
@@ -38,7 +37,6 @@ def main():
 
     log_scan_start("osint", username)
 
-    # Expanded registry with Instagram and other tech platforms
     platforms = {
         "Instagram": "https://www.instagram.com/{}/",
         "GitHub": "https://github.com/{}",
@@ -66,6 +64,7 @@ def main():
 
     print("-" * 60)
     print("Expanded OSINT Scan completed successfully.")
+
 
 if __name__ == "__main__":
     main()

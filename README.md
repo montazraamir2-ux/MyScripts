@@ -8,6 +8,7 @@ privileges required.
 ---
 
 ## Architecture
+‚‚‚‚
 MyScripts/
 ├── main.py               # Interactive menu — suite orchestrator
 ├── report_generator.py   # HTML report generator

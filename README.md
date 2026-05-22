@@ -35,12 +35,12 @@ connect() with concurrent threading.
 - **Concurrency:** Up to 100 threads via ThreadPoolExecutor
 - **Constraint:** TCP connect() only — no SYN scan, no root required
 
-```bash
+~~~bash
 python modules/scanner.py 192.168.1.0/24
 python modules/scanner.py 192.168.1.1 80,443,8080
 
 2. Banner Grabber — modules/banner.py
-Connects to a specified IP and port, sends an HTTP GET request, and
+Connects to a specified IP and port, sends an HTTP          GET request, and
 captures the server's raw response to identify running services.
 Input: Target IP + port (interactive prompt)
 Output: Raw server response (up to 4096 bytes)

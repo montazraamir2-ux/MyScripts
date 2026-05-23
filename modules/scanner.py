@@ -64,10 +64,9 @@ def _resolve_hostname(ip: str) -> str:
         return ""
 
 
-def run(session_id: str = "") -> None:
-    target = input("Enter target IP or CIDR: ").strip()
-    ports_input = input("Ports (comma-separated, or Enter for defaults): ").strip()
-    ports = list(map(int, ports_input.split(","))) if ports_input else DEFAULT_PORTS
+def run(target: str, session_id: str = "", ports: list = None) -> None:
+    if ports is None:
+        ports = DEFAULT_PORTS
 
     log_scan_start("scanner", target, session_id)
 

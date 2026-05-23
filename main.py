@@ -2,7 +2,10 @@
 
 import sys
 import uuid
+from datetime import datetime, timezone
 from core.logger import log_scan_start
+
+_SESSION_ID = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
 
 BANNER = """
 ╔══════════════════════════════════════╗
@@ -15,14 +18,16 @@ MENU = """
 [1] Network Scanner
 [2] OSINT Username Lookup
 [3] Banner Grabber
-[4] Analyze
-[5] Report
+[4] Analyze Log (Gemma 2B)
+[5] Generate HTML Report
 [0] Exit
 """
 
 def run_scanner(session_id):
     from modules.scanner import run
-    run(session_id=session_id)
+    target = input("  Enter target IP or CIDR: ").strip()
+    if target:
+        run(target=target, session_id=session_id)
 
 def run_osint(session_id):
     from modules.osint_tool import main
@@ -32,21 +37,21 @@ def run_banner(session_id):
     from modules.banner import main
     main()
 
-def run_analyze(session_id):
+def run_analyzer(session_id):
     from core.analyzer import analyze_log
     result = analyze_log("scan.log")
-    print(result)
+    print(f"\n{result}\n")
 
 def run_report(session_id):
     from report_generator import generate_report
-    output = generate_report("scan.log")
-    print(f"[+] Report written to {output}")
+    path = generate_report("scan.log")
+    print(f"\n  [+] Report saved to: {path}\n")
 
 ACTIONS = {
     "1": run_scanner,
     "2": run_osint,
     "3": run_banner,
-    "4": run_analyze,
+    "4": run_analyzer,
     "5": run_report,
 }
 

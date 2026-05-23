@@ -1,132 +1,73 @@
-# MyScripts — Modular Reconnaissance & OSINT Suite
+# MyScripts — Reconnaissance & OSINT Suite
 
-A modular reconnaissance and OSINT suite built in Python 3, designed
-to operate inside a non-rooted Termux/Proot Ubuntu environment on
-ARM64 Android. All network interaction uses TCP connect() — no root
-privileges required.
+## Overview
 
----
-
-## Architecture
-
-    MyScripts/
-    ├── main.py               # Interactive menu — suite orchestrator
-    ├── report_generator.py   # HTML report generator
-    ├── scan.log              # Unified JSON log (auto-generated)
-    ├── report.html           # Scan report output (auto-generated)
-    ├── core/
-    │   └── logger.py         # Shared structured logging interface
-    └── modules/
-        ├── scanner.py        # Network scanner
-        ├── banner.py         # Banner grabber
-        └── osint_tool.py     # OSINT username reconnaissance
+MyScripts is a modular Python 3 reconnaissance and OSINT suite engineered to run inside a non-rooted Proot Ubuntu environment on Termux (ARM64 Android). It provides network scanning, DNS enumeration, WHOIS lookup, service banner grabbing, username OSINT across major platforms, and passive network monitoring — all without root privileges. Every network operation uses TCP connect() exclusively, making the suite portable and compliant with the strict constraints of a non-privileged mobile environment. What distinguishes MyScripts is its unified NDJSON logging pipeline, which feeds both a self-contained HTML report generator and an offline Gemma 2B analysis engine via Ollama, enabling structured interpretation of scan results without any cloud dependency.
 
 ---
 
-## Modules
+## Features
 
-### 1. Network Scanner — modules/scanner.py
-
-Scans a single IP or a full CIDR range for open ports using TCP
-connect() with concurrent threading.
-
-- **Input:** Target IP or CIDR range, optional custom port list
-- **Output:** Dictionary mapping each live IP to its open ports
-- **Default ports:** 21, 22, 23, 25, 53, 80, 443, 8080, 8443
-- **Concurrency:** Up to 100 threads via ThreadPoolExecutor
-- **Constraint:** TCP connect() only — no SYN scan, no root required
-
-Usage:
-
-    python modules/scanner.py 192.168.1.0/24
-    python modules/scanner.py 192.168.1.1 80,443,8080
-
----
-
-### 2. Banner Grabber — modules/banner.py
-
-Connects to a specified IP and port, sends an HTTP GET request, and
-captures the server raw response to identify running services.
-
-- **Input:** Target IP + port (interactive prompt)
-- **Output:** Raw server response (up to 4096 bytes)
-- **Protocol:** HTTP — plaintext services only
-- **Use case:** Service identification on discovered open ports
-
-Usage:
-
-    python modules/banner.py
-
----
-
-### 3. OSINT Username Reconnaissance — modules/osint_tool.py
-
-Searches for a target username across 10 platforms simultaneously
-using concurrent threading with false-positive mitigation.
-
-- **Input:** Target username (interactive prompt)
-- **Output:** List of confirmed profile URLs per platform
-- **Platforms:** Instagram, GitHub, Reddit, Telegram, Steam,
-  DockerHub, Pinterest, Medium, GitLab, Cracked.io
-- **Concurrency:** One thread per platform — all run in parallel
-- **False-positive handling:** Instagram logic filters login redirects
-
-Usage:
-
-    python modules/osint_tool.py
-
----
-
-### 4. HTML Report Generator — report_generator.py
-
-Reads the unified scan.log JSON file and produces a formatted
-dark-theme HTML report with event statistics and a full event table.
-
-- **Input:** scan.log (auto-populated by all modules)
-- **Output:** report.html — self-contained HTML file
-- **Statistics:** Total events, Profiles found, Errors
-- **Event types:** scan_start, discovered_ip, profile_found,
-  banner_grab, scan_error
-
-Usage:
-
-    python report_generator.py
-
----
-
-## Core — Unified Logging Interface
-
-Every module writes to a single shared scan.log using structured
-JSON records. No module handles logging independently.
-
-Record format:
-
-    {
-      "timestamp": "2025-05-22 01:11:00",
-      "tool": "scanner",
-      "level": "INFO",
-      "event": "discovered_ip",
-      "data": { "ip": "192.168.1.5", "port": 80 }
-    }
-
-| Function | Event |
-|---|---|
-| log_scan_start(tool, target) | Marks the beginning of any scan |
-| log_discovered_ip(tool, ip, port) | Records an open port found |
-| log_banner_grab(tool, ip, port, banner) | Records a captured banner |
-| log_profile_found(tool, platform, url) | Records a confirmed profile |
-| log_scan_error(tool, error, ip) | Records any scan-time error |
+| Module | Capability | Method |
+|---|---|---|
+| scanner | TCP port scanning of single IPs and CIDR ranges with concurrent threading | TCP connect() via ThreadPoolExecutor (100 threads) |
+| dns | DNS record enumeration — A, MX, NS, TXT, CNAME | dnspython resolver queries |
+| whois | Domain registration and ownership lookup | python-whois registry queries |
+| osint | Username reconnaissance across 10+ social platforms with false-positive filtering | Concurrent HTTP requests, one thread per platform |
+| banner | Service banner grabbing on any discovered open port | Raw TCP socket with HTTP GET probe |
+| monitor | Passive subnet host discovery and periodic availability monitoring | Recurring TCP connect() sweeps across a /24 subnet |
 
 ---
 
 ## Installation
 
-    # Inside Proot Ubuntu on Termux
-    apt install python3 python3-pip
-    pip install requests
-    git clone https://github.com/montazraamir2-ux/MyScripts
-    cd MyScripts
-    python main.py
+Requirements: Python 3, pip3, Proot Ubuntu running inside Termux on an Android device.
+
+```bash
+git clone https://github.com/montazraamir2-ux/MyScripts
+cd MyScripts
+pip3 install -r requirements.txt --break-system-packages
+python3 main.py
+```
+
+To enable offline AI log analysis, install and start Ollama with the Gemma 2B model before using the Analyze option:
+
+```bash
+ollama pull gemma2:2b
+ollama serve &
+```
+
+---
+
+## Usage
+
+### Interactive Menu
+
+```bash
+python3 main.py
+```
+
+Launches the numbered menu. Each option prompts for the required input inline.
+
+### CLI
+
+```bash
+python3 main.py --module scanner --target 192.168.0.1
+python3 main.py --module dns --target example.com
+python3 main.py --module whois --target example.com
+python3 main.py --module osint --target username
+python3 main.py --module monitor --subnet 192.168.0
+python3 main.py --report
+python3 main.py --analyze
+```
+
+`--report` generates `report.html` from the current `scan.log`. `--analyze` passes the log to Gemma 2B via Ollama for offline interpretation.
+
+---
+
+## Architecture
+
+All modules write structured findings to a shared `scan.log` in NDJSON format. The report generator and AI analyzer consume this log independently, keeping every output stage decoupled from the scan runtime. Session IDs tie related log entries together across a full scan run. For a detailed breakdown of module contracts, log entry schemas, and the data pipeline, see [docs/architecture.md](docs/architecture.md).
 
 ---
 
@@ -134,29 +75,17 @@ Record format:
 
 | Property | Value |
 |---|---|
-| Language | Python 3 |
-| Platform | Termux / Proot Ubuntu / ARM64 Android |
-| Root required | No |
-| Scan method | TCP connect() |
-| Log format | Structured JSON |
+| Platform | Termux / Proot Ubuntu / Android |
+| Architecture | ARM64 (aarch64) |
+| Root Required | No |
+| Python | Python 3 |
+| AI Engine | Gemma 2B via Ollama (fully offline) |
 
 ---
 
-## Roadmap
+## Legal & Ethics
 
-- [ ] Severity classification: Info / Low / Medium / High
-- [ ] Session management — named scan sessions
-- [ ] Shodan, VirusTotal, WHOIS API integrations
-- [ ] argparse CLI for all modules
-- [ ] Gemma 2B / Ollama offline log analysis integration
-
----
-
-## Legal
-
-This suite is designed for authorized testing and reconnaissance
-on networks and systems you own or have explicit permission to test.
-Unauthorized use against third-party systems is illegal.
+MyScripts is intended exclusively for authorized security testing, research, and education. Run network scans only against systems you own or have explicit written permission to test. OSINT modules query publicly available information only — never use them to target individuals without lawful authorization. The author assumes no liability for misuse. Unauthorized use against third-party systems is illegal and unethical.
 
 ---
 

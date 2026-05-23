@@ -21,6 +21,7 @@ MENU = """
 [4] Analyze Log (Gemma 2B)
 [5] Generate HTML Report
 [6] DNS Enumeration
+[7] WHOIS Lookup
 [0] Exit
 """
 
@@ -54,6 +55,12 @@ def run_dns(session_id):
     if target:
         run(target=target, session_id=session_id)
 
+def run_whois(session_id):
+    from modules.whois_lookup import run
+    target = input("  Enter domain (e.g. example.com): ").strip()
+    if target:
+        run(target=target, session_id=session_id)
+
 ACTIONS = {
     "1": run_scanner,
     "2": run_osint,
@@ -61,6 +68,7 @@ ACTIONS = {
     "4": run_analyzer,
     "5": run_report,
     "6": run_dns,
+    "7": run_whois,
 }
 
 def main():

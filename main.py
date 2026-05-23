@@ -2,10 +2,8 @@
 
 import sys
 import uuid
-from datetime import datetime, timezone
+import argparse
 from core.logger import log_scan_start
-
-_SESSION_ID = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
 
 BANNER = """
 ╔══════════════════════════════════════╗
@@ -33,12 +31,16 @@ def run_scanner(session_id):
         run(target=target, session_id=session_id)
 
 def run_osint(session_id):
-    from modules.osint_tool import main
-    main()
+    from modules.osint_tool import run
+    target = input("  Enter target username: ").strip()
+    if target:
+        run(target=target, session_id=session_id)
 
 def run_banner(session_id):
-    from modules.banner import main
-    main()
+    from modules.banner import run
+    target = input("  Enter target IP[:port] (default port 80): ").strip()
+    if target:
+        run(target=target, session_id=session_id)
 
 def run_analyzer(session_id):
     from core.analyzer import analyze_log
@@ -78,9 +80,74 @@ ACTIONS = {
     "8": run_monitor,
 }
 
+def _parse_args():
+    parser = argparse.ArgumentParser(
+        prog="myscripts",
+        description="MyScripts — Modular Reconnaissance & OSINT Suite",
+    )
+    parser.add_argument("--module", choices=["scanner", "dns", "whois", "osint", "banner", "monitor"], help="Module to run directly")
+    parser.add_argument("--target", type=str, help="Target IP, CIDR, or domain")
+    parser.add_argument("--subnet", type=str, help="Subnet prefix for monitor (e.g. 192.168.0)")
+    parser.add_argument("--report", action="store_true", help="Generate HTML report")
+    parser.add_argument("--analyze", action="store_true", help="Analyze log with Gemma 2B")
+    return parser.parse_args()
+
 def main():
+    args = _parse_args()
     session_id = str(uuid.uuid4())[:8]
+
+    if args.report:
+        run_report(session_id)
+        return
+
+    if args.analyze:
+        run_analyzer(session_id)
+        return
+
+    if args.module:
+        if args.module == "scanner":
+            if not args.target:
+                print("[ERROR] --target required for scanner")
+                return
+            from modules.scanner import run
+            run(target=args.target, session_id=session_id)
+
+        elif args.module == "dns":
+            if not args.target:
+                print("[ERROR] --target required for dns")
+                return
+            from modules.dns import run
+            run(target=args.target, session_id=session_id)
+
+        elif args.module == "whois":
+            if not args.target:
+                print("[ERROR] --target required for whois")
+                return
+            from modules.whois_lookup import run
+            run(target=args.target, session_id=session_id)
+
+        elif args.module == "osint":
+            if not args.target:
+                print("[ERROR] --target required for osint")
+                return
+            from modules.osint_tool import run as osint_run
+            osint_run(target=args.target, session_id=session_id)
+
+        elif args.module == "banner":
+            if not args.target:
+                print("[ERROR] --target required for banner")
+                return
+            from modules.banner import run as banner_run
+            banner_run(target=args.target, session_id=session_id)
+
+        elif args.module == "monitor":
+            subnet = args.subnet or args.target or "192.168.0"
+            from modules.monitor import run
+            run(target=subnet, session_id=session_id)
+        return
+
     print(BANNER)
+    print(f"  Session: {session_id}")
     while True:
         print(MENU)
         choice = input("Select tool: ").strip()
@@ -91,7 +158,7 @@ def main():
             log_scan_start("main", f"tool_selected={choice}", session_id)
             ACTIONS[choice](session_id)
         else:
-            print("Invalid choice. Try again.")
+            print("  [!] Invalid choice. Try again.")
 
 if __name__ == "__main__":
     main()

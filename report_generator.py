@@ -3,13 +3,11 @@ from pathlib import Path
 from datetime import datetime
 
 def _load_log(log_file: str) -> list[dict]:
-    entries = []
-    with open(log_file) as f:
-        for line in f:
-            line = line.strip()
-            if line:
-                entries.append(json.loads(line))
-    return entries
+    try:
+        with open(log_file) as f:
+            return [json.loads(line) for line in f if line.strip()]
+    except FileNotFoundError:
+        return []
 
 def _build_host_rows(entries: list[dict]) -> str:
     rows = ""
@@ -39,11 +37,12 @@ def _build_events(entries: list[dict]) -> str:
     for entry in entries:
         if "event" not in entry:
             continue
+        detail = json.dumps(entry.get('data', {})) if entry.get('data') else ''
         rows += f"""
         <tr>
             <td>{entry.get('timestamp', '')}</td>
             <td>{entry.get('event', '')}</td>
-            <td>{entry.get('detail', '')}</td>
+            <td>{detail}</td>
         </tr>"""
     return rows
 

@@ -2,6 +2,7 @@ import socket
 import ipaddress
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from core.logger import log_discovered_ip, log_scan_error, log_scan_start, log_findings
+from core.utils import resolve_hostname
 from modules.fingerprint import fingerprint_host
 
 DEFAULT_PORTS = [21, 22, 23, 25, 53, 80, 443, 8080, 8443]
@@ -9,14 +10,14 @@ DEFAULT_TIMEOUT = 1.0
 MAX_WORKERS = 100
 
 
-def scan_port(ip: str, port: int, timeout: float = DEFAULT_TIMEOUT) -> bool:
+def scan_port(ip: str, port: int, timeout: float = DEFAULT_TIMEOUT, session_id: str = "") -> bool:
     try:
         with socket.create_connection((ip, port), timeout=timeout):
             return True
     except (ConnectionRefusedError, TimeoutError):
         return False
     except OSError as e:
-        log_scan_error("scanner", str(e), ip)
+        log_scan_error("scanner", str(e), ip, session_id)
         return False
 
 
@@ -24,7 +25,7 @@ def scan_host(ip: str, ports: list[int] = DEFAULT_PORTS,
               timeout: float = DEFAULT_TIMEOUT, session_id: str = "") -> list[int]:
     open_ports = []
     for port in ports:
-        if scan_port(ip, port, timeout):
+        if scan_port(ip, port, timeout, session_id):
             log_discovered_ip("scanner", ip, port, session_id)
             open_ports.append(port)
     return open_ports
@@ -57,13 +58,6 @@ def scan_network(cidr: str, ports: list[int] = DEFAULT_PORTS,
     return results
 
 
-def _resolve_hostname(ip: str) -> str:
-    try:
-        return socket.gethostbyaddr(ip)[0]
-    except Exception:
-        return ""
-
-
 def run(target: str, session_id: str = "", ports: list = None) -> None:
     if ports is None:
         ports = DEFAULT_PORTS
@@ -81,11 +75,12 @@ def run(target: str, session_id: str = "", ports: list = None) -> None:
         port_details = fingerprint_host(ip, open_ports)
         findings.append({
             "ip": ip,
-            "hostname": _resolve_hostname(ip),
+            "hostname": resolve_hostname(ip),
             "open_ports": port_details
         })
 
-    log_findings("scanner", session_id, findings)
+    if findings:
+        log_findings("scanner", session_id, findings)
 
     for host in findings:
         print(f"  {host['ip']}: {[p['port'] for p in host['open_ports']]}")

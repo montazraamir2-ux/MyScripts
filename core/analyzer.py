@@ -46,12 +46,11 @@ def analyze_log(log_file: str) -> str:
     if not _is_ollama_running():
         return "[!] Ollama is not running. Start it in Proot Ubuntu with: ollama serve"
 
-    entries = []
-    with open(log_file) as f:
-        for line in f:
-            line = line.strip()
-            if line:
-                entries.append(json.loads(line))
+    try:
+        with open(log_file) as f:
+            entries = [json.loads(line) for line in f if line.strip()]
+    except FileNotFoundError:
+        return f"[!] Log file not found: {log_file}"
 
     findings = [e for e in entries if "findings" in e]
 

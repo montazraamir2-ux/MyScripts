@@ -2,6 +2,7 @@ import time
 import socket
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from core.logger import log_findings
+from core.utils import resolve_hostname
 
 _PORTS = [22, 80, 443, 8080]
 _TIMEOUT = 1.0
@@ -27,16 +28,12 @@ def _sweep(subnet: str) -> set[str]:
         }
         for future in as_completed(futures):
             ip = futures[future]
-            if future.result():
-                alive.add(ip)
+            try:
+                if future.result():
+                    alive.add(ip)
+            except Exception:
+                pass
     return alive
-
-
-def _resolve(ip: str) -> str:
-    try:
-        return socket.gethostbyaddr(ip)[0]
-    except socket.herror:
-        return ""
 
 
 def run(target: str, session_id: str) -> None:
@@ -66,7 +63,7 @@ def run(target: str, session_id: str) -> None:
             gone_hosts = previous - current
 
             for ip in new_hosts:
-                hostname = _resolve(ip)
+                hostname = resolve_hostname(ip)
                 entry = {
                     "event": "new_host",
                     "ip": ip,

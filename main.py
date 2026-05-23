@@ -20,6 +20,7 @@ MENU = """
 [3] Banner Grabber
 [4] Analyze Log (Gemma 2B)
 [5] Generate HTML Report
+[6] DNS Enumeration
 [0] Exit
 """
 
@@ -47,12 +48,19 @@ def run_report(session_id):
     path = generate_report("scan.log")
     print(f"\n  [+] Report saved to: {path}\n")
 
+def run_dns(session_id):
+    from modules.dns import run
+    target = input("  Enter domain (e.g. example.com): ").strip()
+    if target:
+        run(target=target, session_id=session_id)
+
 ACTIONS = {
     "1": run_scanner,
     "2": run_osint,
     "3": run_banner,
     "4": run_analyzer,
     "5": run_report,
+    "6": run_dns,
 }
 
 def main():

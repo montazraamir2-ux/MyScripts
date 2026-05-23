@@ -22,6 +22,7 @@ MENU = """
 [5] Generate HTML Report
 [6] DNS Enumeration
 [7] WHOIS Lookup
+[8] Network Monitor
 [0] Exit
 """
 
@@ -61,6 +62,11 @@ def run_whois(session_id):
     if target:
         run(target=target, session_id=session_id)
 
+def run_monitor(session_id):
+    from modules.monitor import run
+    subnet = input("  Enter subnet prefix (e.g. 192.168.0): ").strip()
+    run(target=subnet, session_id=session_id)
+
 ACTIONS = {
     "1": run_scanner,
     "2": run_osint,
@@ -69,6 +75,7 @@ ACTIONS = {
     "5": run_report,
     "6": run_dns,
     "7": run_whois,
+    "8": run_monitor,
 }
 
 def main():

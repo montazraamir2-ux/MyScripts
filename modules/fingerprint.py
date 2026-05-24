@@ -1,68 +1,64 @@
-import socket
+from __future__ import annotations
 
-TIMEOUT = 2.0
+import dataclasses
+import re
+from dataclasses import dataclass
 
-SERVICE_MAP = {
-    21: "FTP", 22: "SSH", 23: "Telnet", 25: "SMTP",
-    53: "DNS", 80: "HTTP", 110: "POP3", 135: "MSRPC",
-    139: "NetBIOS", 443: "HTTPS", 445: "SMB",
-    3306: "MySQL", 3389: "RDP", 8080: "HTTP-Alt", 8443: "HTTPS-Alt"
+BANNER_PATTERNS: dict[str, dict] = {
+    r"SSH-(\S+)-([Dd]ropbear\S*)":   {"service": "SSH",     "software": "Dropbear",  "version_group": 1},
+    r"SSH-(\S+)-OpenSSH_(\S+)":      {"service": "SSH",     "software": "OpenSSH",   "version_group": 2},
+    r"^220.*FileZilla":              {"service": "FTP",     "software": "FileZilla"},
+    r"^220.*FTP":                    {"service": "FTP",     "software": "unknown"},
+    r"^Server: Apache/(\S+)":        {"service": "HTTP",    "software": "Apache",    "version_group": 1},
+    r"^Server: nginx/(\S+)":         {"service": "HTTP",    "software": "nginx",     "version_group": 1},
+    r"^HTTP/1\.[01] \d{3}":          {"service": "HTTP",    "software": "unknown"},
+    r"^\+OK":                        {"service": "POP3",    "software": "unknown"},
+    r"^\* OK.*Dovecot":              {"service": "IMAP",    "software": "Dovecot"},
+    r"^220.*SMTP":                   {"service": "SMTP",    "software": "unknown"},
+    r"^RFB (\S+)":                   {"service": "VNC",     "software": "unknown",   "version_group": 1},
+    r"mysql_native_password":        {"service": "MySQL",   "software": "MySQL"},
+    r"^\x15\x03":                    {"service": "TLS/SSL", "software": "unknown"},
 }
 
-HTTP_PROBE = b"HEAD / HTTP/1.0\r\nHost: target\r\n\r\n"
-GENERIC_PROBE = b"\r\n"
 
-def _read_banner(sock: socket.socket) -> str | None:
-    try:
-        data = sock.recv(1024)
-        return data.decode(errors="ignore").strip() or None
-    except Exception:
-        return None
+@dataclass
+class ServiceInfo:
+    port: int
+    protocol: str
+    service: str
+    software: str
+    version: str
+    raw_banner: str
 
-def _probe_http(sock: socket.socket) -> str | None:
-    try:
-        sock.send(HTTP_PROBE)
-        return _read_banner(sock)
-    except Exception:
-        return None
 
-def _probe_passive(sock: socket.socket) -> str | None:
-    return _read_banner(sock)
+def parse_banner(port: int, banner: str) -> ServiceInfo:
+    for pattern, meta in BANNER_PATTERNS.items():
+        match = re.search(pattern, banner, re.MULTILINE)
+        if match:
+            version = ""
+            vgroup = meta.get("version_group")
+            if vgroup is not None:
+                try:
+                    version = match.group(vgroup)
+                except IndexError as _:
+                    pass
+            return ServiceInfo(
+                port=port,
+                protocol="TCP",
+                service=meta["service"],
+                software=meta.get("software", ""),
+                version=version,
+                raw_banner=banner,
+            )
+    return ServiceInfo(port=port, protocol="TCP", service="unknown", software="", version="", raw_banner=banner)
 
-def _probe_generic(sock: socket.socket) -> str | None:
-    try:
-        sock.send(GENERIC_PROBE)
-        return _read_banner(sock)
-    except Exception:
-        return None
 
-PROBE_STRATEGY = {
-    21: _probe_passive,
-    22: _probe_passive,
-    23: _probe_passive,
-    25: _probe_passive,
-    80: _probe_http,
-    443: _probe_http,
-    8080: _probe_http,
-    8443: _probe_http,
-    110: _probe_passive,
-}
+def fingerprint_host(ip: str, banners: dict[int, str]) -> list[ServiceInfo]:
+    return [parse_banner(port, banner) for port, banner in banners.items()]
 
-def grab_banner(host: str, port: int) -> dict:
-    result = {
-        "port": port,
-        "service": SERVICE_MAP.get(port, "unknown"),
-        "banner": None
+
+def to_log_findings(ip: str, services: list[ServiceInfo]) -> dict:
+    return {
+        "ip": ip,
+        "services": [dataclasses.asdict(s) for s in services],
     }
-    try:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.settimeout(TIMEOUT)
-            s.connect((host, port))
-            strategy = PROBE_STRATEGY.get(port, _probe_generic)
-            result["banner"] = strategy(s)
-    except Exception:
-        pass
-    return result
-
-def fingerprint_host(host: str, open_ports: list[int]) -> list[dict]:
-    return [grab_banner(host, port) for port in open_ports]

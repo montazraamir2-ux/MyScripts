@@ -24,7 +24,7 @@ def run(target: str, session_id: str = "") -> None:
     ip = parts[0]
     try:
         port = int(parts[1]) if len(parts) > 1 else 80
-    except ValueError:
+    except ValueError as _:
         port = 80
 
     log_scan_start("banner", f"{ip}:{port}", session_id)
@@ -50,7 +50,7 @@ def main():
     target_port = input("Enter target port [80]: ").strip()
     try:
         target_port = int(target_port) if target_port else 80
-    except ValueError:
+    except ValueError as _:
         target_port = 80
 
     run(f"{target_ip}:{target_port}")

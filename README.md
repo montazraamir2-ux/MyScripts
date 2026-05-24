@@ -1,39 +1,73 @@
-# MyScripts — Reconnaissance & OSINT Suite
+# MyScripts
 
-## Overview
-
-MyScripts is a modular Python 3 reconnaissance and OSINT suite engineered to run inside a non-rooted Proot Ubuntu environment on Termux (ARM64 Android). It provides network scanning, DNS enumeration, WHOIS lookup, service banner grabbing, username OSINT across major platforms, and passive network monitoring — all without root privileges. Every network operation uses TCP connect() exclusively, making the suite portable and compliant with the strict constraints of a non-privileged mobile environment. What distinguishes MyScripts is its unified NDJSON logging pipeline, which feeds both a self-contained HTML report generator and an offline Gemma 2B analysis engine via Ollama, enabling structured interpretation of scan results without any cloud dependency.
+Modular reconnaissance and OSINT suite built for non-rooted Termux/Proot Ubuntu on ARM64 Android. Performs host discovery and service fingerprinting via TCP connect() scanning, pipes results through a locally-hosted Gemma 2B model via Ollama for offline AI risk analysis, and produces self-contained HTML reports — the entire pipeline runs without internet access after initial setup.
 
 ---
 
-## Features
+## Environment
 
-| Module | Capability | Method |
-|---|---|---|
-| scanner | TCP port scanning of single IPs and CIDR ranges with concurrent threading | TCP connect() via ThreadPoolExecutor (100 threads) |
-| dns | DNS record enumeration — A, MX, NS, TXT, CNAME | dnspython resolver queries |
-| whois | Domain registration and ownership lookup | python-whois registry queries |
-| osint | Username reconnaissance across 10+ social platforms with false-positive filtering | Concurrent HTTP requests, one thread per platform |
-| banner | Service banner grabbing on any discovered open port | Raw TCP socket with HTTP GET probe |
-| monitor | Passive subnet host discovery and periodic availability monitoring | Recurring TCP connect() sweeps across a /24 subnet |
+| Property     | Value                          |
+|--------------|--------------------------------|
+| Platform     | Android (non-rooted)           |
+| Runtime      | Proot Ubuntu inside Termux     |
+| Architecture | ARM64 (aarch64)                |
+| Python       | 3.x (stdlib + netifaces)       |
+| Local AI     | Ollama + Gemma 2B              |
+| Scan Method  | TCP connect() — no Raw Sockets |
 
 ---
 
 ## Installation
 
-Requirements: Python 3, pip3, Proot Ubuntu running inside Termux on an Android device.
+**1. Install Termux from F-Droid** (not the Play Store build).
 
-```bash
-git clone https://github.com/montazraamir2-ux/MyScripts
-cd MyScripts
-pip3 install -r requirements.txt --break-system-packages
-python3 main.py
+**2. Install Proot Ubuntu and core tools inside Termux:**
+
+```sh
+pkg install proot-distro git python
 ```
 
-To enable offline AI log analysis, install and start Ollama with the Gemma 2B model before using the Analyze option:
+**3. Install and enter the Ubuntu environment:**
 
-```bash
+```sh
+proot-distro install ubuntu
+proot-distro login ubuntu
+```
+
+**4. Inside Proot Ubuntu, install Python and pip:**
+
+```sh
+apt install python3 python3-pip git
+```
+
+**5. Install Python dependencies:**
+
+```sh
+pip install netifaces watchdog
+```
+
+**6. Clone the repository:**
+
+```sh
+git clone <repo-url>
+cd MyScripts
+```
+
+**7. Install Ollama for ARM64:**
+
+```sh
+curl -fsSL https://ollama.com/install.sh | sh
+```
+
+**8. Pull the Gemma 2B model:**
+
+```sh
 ollama pull gemma2:2b
+```
+
+Before any run that includes AI analysis, start the Ollama server:
+
+```sh
 ollama serve &
 ```
 
@@ -41,52 +75,207 @@ ollama serve &
 
 ## Usage
 
-### Interactive Menu
+### CLI Mode
 
-```bash
+| Flag               | Description                                 |
+|--------------------|---------------------------------------------|
+| `--scan`           | Run full recon pipeline                     |
+| `--cidr CIDR`      | Target network (auto-detect if omitted)     |
+| `--ports PORT ...` | Custom port list (space-separated)          |
+| `--no-ai`          | Skip AI analysis                            |
+| `--no-report`      | Skip HTML report generation                 |
+| `--report`         | Generate report from last session           |
+| `--session ID`     | Specify session ID for report               |
+| `--info`           | Display local network info                  |
+
+Display local network information without scanning:
+
+```sh
+python3 main.py --info
+```
+
+Run a full scan with auto-detected network:
+
+```sh
+python3 main.py --scan
+```
+
+Scan a specific CIDR block:
+
+```sh
+python3 main.py --scan --cidr 192.168.1.0/24
+```
+
+Scan specific ports only, skip AI analysis:
+
+```sh
+python3 main.py --scan --ports 22 80 443 --no-ai
+```
+
+Regenerate the HTML report from the most recent session:
+
+```sh
+python3 main.py --report
+```
+
+Regenerate a report for a specific session:
+
+```sh
+python3 main.py --report --session abc123f
+```
+
+### Interactive Mode
+
+```sh
 python3 main.py
 ```
 
-Launches the numbered menu. Each option prompts for the required input inline.
+| Option | Action                                               |
+|--------|------------------------------------------------------|
+| `1`    | Full scan using auto-detected network CIDR           |
+| `2`    | Prompt for a CIDR, then run full pipeline            |
+| `3`    | Display local network info (equivalent to `--info`)  |
+| `4`    | Generate HTML report from the last session           |
+| `5`    | Exit                                                 |
 
-### CLI
+---
 
-```bash
-python3 main.py --module scanner --target 192.168.0.1
-python3 main.py --module dns --target example.com
-python3 main.py --module whois --target example.com
-python3 main.py --module osint --target username
-python3 main.py --module monitor --subnet 192.168.0
-python3 main.py --report
-python3 main.py --analyze
+## Module Reference
+
+| Module            | Role                                      |
+|-------------------|-------------------------------------------|
+| `network_info.py` | Local IP, interface, and CIDR detection   |
+| `logger.py`       | Unified NDJSON log writer and session ID  |
+| `scanner.py`      | TCP connect() host and port scanner       |
+| `fingerprint.py`  | Banner-based service identification       |
+| `ai_analyst.py`   | Offline AI risk analysis via Ollama       |
+| `reporter.py`     | HTML report generation from session log   |
+
+---
+
+## Log Format
+
+All events are written to `logs/myscripts.log` as newline-delimited JSON (NDJSON) — one JSON object per line. The file is directly parseable by `jq`, Python's `json` module, or any line-oriented tool.
+
+Each entry follows this structure:
+
+```json
+{
+  "timestamp": "2024-11-14T08:32:11.045821",
+  "session_id": "a3f7c91b",
+  "tool": "scanner",
+  "target": "192.168.0.42",
+  "severity": "info",
+  "findings": {
+    "ip": "192.168.0.42",
+    "open_ports": [22, 80, 443],
+    "banners": {
+      "22": "SSH-2.0-OpenSSH_8.9p1"
+    },
+    "scan_duration_ms": 312.5,
+    "services": [
+      {
+        "port": 22,
+        "protocol": "TCP",
+        "service": "SSH",
+        "software": "OpenSSH",
+        "version": "8.9p1",
+        "raw_banner": "SSH-2.0-OpenSSH_8.9p1"
+      }
+    ]
+  }
+}
 ```
 
-`--report` generates `report.html` from the current `scan.log`. `--analyze` passes the log to Gemma 2B via Ollama for offline interpretation.
+The `tool` field identifies the originating module. The `severity` field mirrors the AI risk level for `ai_analyst` entries and is `"info"` for all other entry types.
+
+---
+
+## Output
+
+### Terminal
+
+```
+  Session: a3f7c91b | Network: 192.168.0.0/24
+  Scanning 192.168.0.0/24 ...
+  [ALIVE] 192.168.0.1 | Ports: 22, 80, 443
+  [SERVICE] 192.168.0.1:22 — SSH | OpenSSH 8.9p1
+  [SERVICE] 192.168.0.1:80 — HTTP | nginx 1.24.0
+  [ALIVE] 192.168.0.42 | Ports: 21, 23
+  [SERVICE] 192.168.0.42:23 — unknown |
+  Scan complete — 2 host(s) found.
+  [AI] 192.168.0.1 | Risk: low
+  [AI] Summary: Host exposes SSH and HTTP. Both services are current versions with no immediately known CVEs.
+  [AI] 192.168.0.42 | Risk: high
+  [AI] Summary: Telnet and FTP are active. These protocols transmit credentials in plaintext.
+  [FLAG] Telnet service detected — unencrypted remote access
+  [FLAG] FTP service detected — plaintext credential exposure
+  [REPORT] /root/MyScripts/logs/report_a3f7c91b.html
+```
+
+### Log File
+
+```
+logs/myscripts.log
+```
+
+One JSON object per line. Entries accumulate across sessions; filter by `session_id` to isolate a single run.
+
+### HTML Report
+
+```
+logs/report_<session_id>.html
+```
+
+Self-contained single file — no external assets, no CDN links, no JavaScript dependencies. Sections:
+
+- **Summary cards** — hosts alive, total services found, high-risk count, medium-risk count.
+- **Host results table** — IP, open ports, identified services, and AI-assigned risk level per host.
+- **AI analysis cards** — per-host risk badge, summary paragraph, and flagged findings list.
 
 ---
 
 ## Architecture
 
-All modules write structured findings to a shared `scan.log` in NDJSON format. The report generator and AI analyzer consume this log independently, keeping every output stage decoupled from the scan runtime. Session IDs tie related log entries together across a full scan run. For a detailed breakdown of module contracts, log entry schemas, and the data pipeline, see [docs/architecture.md](docs/architecture.md).
+```
+network_info
+     |
+     v
+  scanner -------> fingerprint
+     |                  |
+     |<-----------------+
+     |
+     v
+ ai_analyst
+     |
+     v
+  reporter
+     |
+     v
+ HTML Report
+```
+
+On startup, `network_info` detects the local interface and derives the CIDR. `scanner` performs concurrent TCP connect() scans across all hosts in the subnet and, for each open port, passes the raw banner to `fingerprint` for service identification. The combined host results are written to the session log by `logger`. If AI analysis is enabled, each host with identified services is sent to `ai_analyst`, which builds a structured prompt and queries the local Ollama instance; parsed results are logged as `ai_analyst` entries. `reporter` then reads all session entries from the log and renders the HTML report.
 
 ---
 
-## Environment
+## Constraints & Design Decisions
 
-| Property | Value |
-|---|---|
-| Platform | Termux / Proot Ubuntu / Android |
-| Architecture | ARM64 (aarch64) |
-| Root Required | No |
-| Python | Python 3 |
-| AI Engine | Gemma 2B via Ollama (fully offline) |
-
----
-
-## Legal & Ethics
-
-MyScripts is intended exclusively for authorized security testing, research, and education. Run network scans only against systems you own or have explicit written permission to test. OSINT modules query publicly available information only — never use them to target individuals without lawful authorization. The author assumes no liability for misuse. Unauthorized use against third-party systems is illegal and unethical.
+| Constraint       | Decision                                               |
+|------------------|--------------------------------------------------------|
+| No root          | TCP connect() replaces raw sockets and SYN scans       |
+| ARM64            | Python-native implementation, no compiled binary deps  |
+| Offline-first    | Ollama runs locally — no cloud AI, no API keys         |
+| Resource-limited | `ThreadPoolExecutor` with bounded workers; 90s AI timeout |
 
 ---
 
-Maintained by [Montazar](https://www.linkedin.com/in/montazar-amer-06743b38a) — Cybersecurity Engineering Student | Offensive Security & OSCP Track
+## Ethical Scope
+
+This tool is designed for authorized penetration testing and personal network environments only. OSINT modules operate exclusively on publicly available information.
+
+---
+
+## License
+
+MIT

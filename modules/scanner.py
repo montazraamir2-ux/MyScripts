@@ -1,105 +1,132 @@
+from __future__ import annotations
+
+import dataclasses
 import socket
-import ipaddress
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from core.logger import log_discovered_ip, log_scan_error, log_scan_start, log_findings
-from core.utils import resolve_hostname
-from modules.fingerprint import fingerprint_host
+from dataclasses import dataclass, field
 
-DEFAULT_PORTS = [21, 22, 23, 25, 53, 80, 443, 8080, 8443]
-DEFAULT_TIMEOUT = 1.0
-MAX_WORKERS = 100
+from modules.fingerprint import ServiceInfo, fingerprint_host
+from modules.network_info import iter_cidr_hosts
+
+COMMON_PORTS: list[int] = [
+    21, 22, 23, 25, 53, 80, 110, 139, 143,
+    443, 445, 3306, 3389, 5900, 8080, 8443,
+]
 
 
-def scan_port(ip: str, port: int, timeout: float = DEFAULT_TIMEOUT, session_id: str = "") -> bool:
+@dataclass
+class HostResult:
+    ip: str
+    is_alive: bool
+    open_ports: list[int]
+    banners: dict[int, str]
+    scan_duration_ms: float
+    services: list = field(default_factory=list)
+
+
+def grab_banner(ip: str, port: int) -> str:
     try:
-        with socket.create_connection((ip, port), timeout=timeout):
-            return True
-    except (ConnectionRefusedError, TimeoutError):
-        return False
-    except OSError as e:
-        log_scan_error("scanner", str(e), ip, session_id)
-        return False
+        with socket.create_connection((ip, port), timeout=2.0) as s:
+            s.sendall(b"\r\n")
+            return s.recv(1024).decode("utf-8", errors="ignore").strip()
+    except Exception as _:
+        return ""
 
 
-def scan_host(ip: str, ports: list[int] = DEFAULT_PORTS,
-              timeout: float = DEFAULT_TIMEOUT, session_id: str = "") -> list[int]:
-    open_ports = []
-    for port in ports:
-        if scan_port(ip, port, timeout, session_id):
-            log_discovered_ip("scanner", ip, port, session_id)
-            open_ports.append(port)
-    return open_ports
-
-
-def scan_network(cidr: str, ports: list[int] = DEFAULT_PORTS,
-                 timeout: float = DEFAULT_TIMEOUT, session_id: str = "") -> dict[str, list[int]]:
+def scan_port(ip: str, port: int, timeout: float = 1.0) -> bool:
     try:
-        network = ipaddress.ip_network(cidr, strict=False)
-    except ValueError as e:
-        log_scan_error("scanner", f"Invalid network range '{cidr}': {e}", session_id=session_id)
-        return {}
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(timeout)
+            return s.connect_ex((ip, port)) == 0
+    except Exception as _:
+        return False
 
-    results: dict[str, list[int]] = {}
 
-    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-        futures = {
-            executor.submit(scan_host, str(ip), ports, timeout, session_id): str(ip)
-            for ip in network.hosts()
-        }
+def scan_host(
+    ip: str,
+    ports: list[int] = COMMON_PORTS,
+    max_workers: int = 50,
+) -> HostResult:
+    start = time.monotonic()
+    open_ports: list[int] = []
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {executor.submit(scan_port, ip, port): port for port in ports}
         for future in as_completed(futures):
-            ip = futures[future]
             try:
-                open_ports = future.result()
-                if open_ports:
-                    results[ip] = open_ports
-            except Exception as e:
-                log_scan_error("scanner", str(e), ip, session_id)
+                if future.result():
+                    open_ports.append(futures[future])
+            except Exception as _:
+                pass
 
-    return results
+    banners: dict[int, str] = {}
+    for port in open_ports:
+        banner = grab_banner(ip, port)
+        if banner:
+            banners[port] = banner
+
+    return HostResult(
+        ip=ip,
+        is_alive=len(open_ports) > 0,
+        open_ports=sorted(open_ports),
+        banners=banners,
+        scan_duration_ms=round((time.monotonic() - start) * 1000, 2),
+        services=fingerprint_host(ip, banners),
+    )
 
 
-def run(target: str, session_id: str = "", ports: list = None) -> None:
-    if ports is None:
-        ports = DEFAULT_PORTS
+def scan_network(
+    cidr: str,
+    ports: list[int] = COMMON_PORTS,
+    max_workers: int = 100,
+) -> list[HostResult]:
+    hosts = [str(h) for h in iter_cidr_hosts(cidr)]
+    alive: list[HostResult] = []
 
-    log_scan_start("scanner", target, session_id)
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {executor.submit(scan_host, ip, ports): ip for ip in hosts}
+        for future in as_completed(futures):
+            try:
+                result = future.result()
+                if result.is_alive:
+                    alive.append(result)
+            except Exception as _:
+                pass
+
+    return alive
+
+
+def to_log_findings(result: HostResult) -> dict:
+    return {
+        "ip": result.ip,
+        "open_ports": result.open_ports,
+        "banners": result.banners,
+        "scan_duration_ms": result.scan_duration_ms,
+        "services": [dataclasses.asdict(s) for s in result.services],
+    }
+
+
+def run(target: str, session_id: str = "") -> None:
+    from modules.logger import make_entry, write_log
 
     if "/" in target:
-        raw_results = scan_network(target, ports, session_id=session_id)
+        results = scan_network(target)
     else:
-        open_ports = scan_host(target, ports, session_id=session_id)
-        raw_results = {target: open_ports} if open_ports else {}
+        result = scan_host(target)
+        results = [result] if result.is_alive else []
 
-    findings = []
-    for ip, open_ports in raw_results.items():
-        port_details = fingerprint_host(ip, open_ports)
-        findings.append({
-            "ip": ip,
-            "hostname": resolve_hostname(ip),
-            "open_ports": port_details
-        })
+    for result in results:
+        write_log(make_entry("scanner", result.ip, "info", to_log_findings(result)))
+        ports_str = ", ".join(str(p) for p in result.open_ports)
+        print(f"  [ALIVE] {result.ip} | Ports: {ports_str or 'none'}")
 
-    if findings:
-        log_findings("scanner", session_id, findings)
-
-    for host in findings:
-        print(f"  {host['ip']}: {[p['port'] for p in host['open_ports']]}")
+    print(f"\n  Scan complete — {len(results)} host(s) found.")
 
 
-def main():
+def main() -> None:
     import sys
-    target = sys.argv[1] if len(sys.argv) > 1 else "127.0.0.1"
-    ports = list(map(int, sys.argv[2].split(","))) if len(sys.argv) > 2 else DEFAULT_PORTS
-
-    log_scan_start("scanner", target)
-
-    if "/" in target:
-        results = scan_network(target, ports)
-        for ip, open_ports in results.items():
-            print(f"  {ip}: {open_ports}")
-    else:
-        open_ports = scan_host(target, ports)
-        print(f"  {target}: {open_ports or 'no open ports found'}")
+    run(target=sys.argv[1] if len(sys.argv) > 1 else "127.0.0.1")
 
 
 if __name__ == "__main__":

@@ -1,92 +1,180 @@
+from __future__ import annotations
+
+import threading
 import time
-import socket
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from core.logger import log_findings
-from core.utils import resolve_hostname
+from dataclasses import dataclass
+from datetime import datetime
 
-_PORTS = [22, 80, 443, 8080]
-_TIMEOUT = 1.0
-_MAX_WORKERS = 100
-
-
-def _is_alive(ip: str) -> bool:
-    for port in _PORTS:
-        try:
-            with socket.create_connection((ip, port), timeout=_TIMEOUT):
-                return True
-        except (ConnectionRefusedError, TimeoutError, OSError):
-            continue
-    return False
+from modules.network_info import iter_cidr_hosts
+from modules.scanner import scan_port
 
 
-def _sweep(subnet: str) -> set[str]:
-    alive = set()
-    with ThreadPoolExecutor(max_workers=_MAX_WORKERS) as executor:
-        futures = {
-            executor.submit(_is_alive, f"{subnet}.{i}"): f"{subnet}.{i}"
-            for i in range(1, 255)
-        }
+MONITOR_PORTS: list[int] = [22, 80, 443, 8080, 8443, 445, 3389, 21, 23]
+
+
+@dataclass
+class DeviceEvent:
+    event_type: str
+    ip: str
+    detected_at: str
+    open_ports: list[int]
+    response_time_ms: float
+
+
+@dataclass
+class MonitorState:
+    cidr: str
+    interval_seconds: int
+    known_hosts: dict[str, DeviceEvent]
+    running: bool
+    scan_count: int
+    started_at: str
+
+
+def probe_host(
+    ip: str,
+    ports: list[int] = MONITOR_PORTS,
+    timeout: float = 0.5,
+) -> tuple[bool, list[int], float]:
+    start = time.monotonic()
+    open_ports: list[int] = []
+
+    with ThreadPoolExecutor(max_workers=20) as executor:
+        futures = {executor.submit(scan_port, ip, port, timeout): port for port in ports}
+        for future in as_completed(futures):
+            try:
+                if future.result():
+                    open_ports.append(futures[future])
+            except Exception as _:
+                pass
+
+    elapsed_ms = round((time.monotonic() - start) * 1000, 2)
+    return bool(open_ports), sorted(open_ports), elapsed_ms
+
+
+def scan_network_once(
+    cidr: str,
+    ports: list[int] = MONITOR_PORTS,
+) -> dict[str, tuple[list[int], float]]:
+    hosts = [str(h) for h in iter_cidr_hosts(cidr)]
+    alive: dict[str, tuple[list[int], float]] = {}
+
+    with ThreadPoolExecutor(max_workers=80) as executor:
+        futures = {executor.submit(probe_host, ip, ports): ip for ip in hosts}
         for future in as_completed(futures):
             ip = futures[future]
             try:
-                if future.result():
-                    alive.add(ip)
-            except Exception:
+                is_alive, open_ports, elapsed_ms = future.result()
+                if is_alive:
+                    alive[ip] = (open_ports, elapsed_ms)
+            except Exception as _:
                 pass
+
     return alive
 
 
-def run(target: str, session_id: str) -> None:
-    duration = 60
-    interval = 20
-    subnet = target if target else "192.168.0"
+def diff_scan(
+    previous: dict[str, DeviceEvent],
+    current: dict[str, tuple[list[int], float]],
+) -> list[DeviceEvent]:
+    events: list[DeviceEvent] = []
+    now = datetime.utcnow().isoformat()
 
-    print(f"[MONITOR] TCP sweep monitor on {subnet}.0/24")
-    print(f"  Duration: {duration}s | Sweep every: {interval}s")
-    print("  Press Ctrl+C to stop early.\n")
+    for ip, (open_ports, response_time_ms) in current.items():
+        if ip not in previous:
+            events.append(DeviceEvent(
+                event_type="joined",
+                ip=ip,
+                detected_at=now,
+                open_ports=open_ports,
+                response_time_ms=response_time_ms,
+            ))
 
-    print("  [*] Initial sweep...")
-    previous = _sweep(subnet)
-    print(f"  [*] {len(previous)} active host(s) found: {sorted(previous)}\n")
+    for ip in previous:
+        if ip not in current:
+            events.append(DeviceEvent(
+                event_type="left",
+                ip=ip,
+                detected_at=now,
+                open_ports=[],
+                response_time_ms=0.0,
+            ))
 
-    findings = []
-    elapsed = 0
+    return events
 
-    try:
-        while elapsed < duration:
-            time.sleep(interval)
-            elapsed += interval
-            print(f"  [*] Sweeping... ({elapsed}s)")
-            current = _sweep(subnet)
 
-            new_hosts = current - previous
-            gone_hosts = previous - current
+def start_monitor(
+    cidr: str,
+    interval_seconds: int = 30,
+    on_event: callable = None,
+) -> MonitorState:
+    baseline = scan_network_once(cidr)
+    now = datetime.utcnow().isoformat()
+    known_hosts: dict[str, DeviceEvent] = {
+        ip: DeviceEvent(
+            event_type="joined",
+            ip=ip,
+            detected_at=now,
+            open_ports=open_ports,
+            response_time_ms=response_time_ms,
+        )
+        for ip, (open_ports, response_time_ms) in baseline.items()
+    }
 
-            for ip in new_hosts:
-                hostname = resolve_hostname(ip)
-                entry = {
-                    "event": "new_host",
-                    "ip": ip,
-                    "hostname": hostname or "unknown",
-                }
-                findings.append(entry)
-                print(f"  [NEW]  {ip} | {hostname or 'unknown'}")
+    print(f"[MONITOR] Baseline: {len(known_hosts)} devices detected.")
 
-            for ip in gone_hosts:
-                entry = {
-                    "event": "host_gone",
-                    "ip": ip,
-                }
-                findings.append(entry)
-                print(f"  [GONE] {ip}")
+    state = MonitorState(
+        cidr=cidr,
+        interval_seconds=interval_seconds,
+        known_hosts=known_hosts,
+        running=True,
+        scan_count=0,
+        started_at=now,
+    )
 
-            previous = current
+    t = threading.Thread(target=_monitor_loop, args=(state, on_event), daemon=True)
+    t.start()
 
-    except KeyboardInterrupt:
-        print("\n  [!] Monitor stopped by user.")
+    return state
 
-    if findings:
-        log_findings("monitor", session_id, findings)
-        print(f"\n  [+] {len(findings)} network events logged.")
-    else:
-        print(f"\n  [!] No network changes detected.")
+
+def _monitor_loop(
+    state: MonitorState,
+    on_event: callable,
+) -> None:
+    while state.running:
+        time.sleep(state.interval_seconds)
+        try:
+            current = scan_network_once(state.cidr)
+            events = diff_scan(state.known_hosts, current)
+
+            for event in events:
+                if event.event_type == "joined":
+                    ports_str = ", ".join(str(p) for p in event.open_ports)
+                    print(f"[MONITOR] joined: {event.ip} | Ports: {ports_str} | +{event.response_time_ms:.0f}ms")
+                    state.known_hosts[event.ip] = event
+                else:
+                    print(f"[MONITOR] left: {event.ip}")
+                    state.known_hosts.pop(event.ip, None)
+
+                if on_event is not None:
+                    on_event(event)
+
+            state.scan_count += 1
+        except Exception as _:
+            pass
+
+
+def stop_monitor(state: MonitorState) -> None:
+    state.running = False
+    print(f"[MONITOR] Stopped after {state.scan_count} scans.")
+
+
+def to_log_findings(event: DeviceEvent) -> dict:
+    return {
+        "event_type": event.event_type,
+        "ip": event.ip,
+        "open_ports": event.open_ports,
+        "response_time_ms": event.response_time_ms,
+    }

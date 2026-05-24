@@ -2,7 +2,7 @@ import json
 import urllib.request
 
 OLLAMA_URL = "http://localhost:11434/api/generate"
-MODEL = "gemma2:2b"
+MODEL = "gemma2-clean:latest"
 
 def _is_ollama_running() -> bool:
     try:

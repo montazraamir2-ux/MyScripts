@@ -140,6 +140,83 @@ python3 main.py
 
 ---
 
+## Demo Output
+
+### Full Scan Pipeline
+
+```
+  Session: a9df8943 | Network: 192.168.0.0/24
+  Scanning 192.168.0.0/24 ...
+  [ALIVE] 192.168.0.1 | Ports: 22, 80
+  [SERVICE] 192.168.0.1:80 — HTTP | unknown
+  [SERVICE] 192.168.0.1:22 — SSH | Dropbear 2.0
+  Scan complete — 1 host(s) found.
+  [REPORT] /root/MyScripts/logs/report_a9df8943.html
+```
+
+### OSINT Lookup
+
+```
+  [OSINT] Target: 8.8.8.8 (ip)
+  [OSINT] Organisation: Google LLC
+  [OSINT] Country: US
+  [OSINT] DNS A Records: []
+  [OSINT] MX Present: no
+  [DNS] PTR: dns.google
+  [OSINT] Reputation: Google LLC
+  [OSINT] Summary: Target 8.8.8.8 is registered to Google LLC in US. No MX records detected. Shodan data unavailable — no API key provided. IP flagged as hosting/datacenter.
+```
+
+### Session History
+
+```
+ID        Name              Date              Hosts  High  Med
+──────────────────────────────────────────────────────────────
+c63b8d99  unnamed           2026-05-25 00:40  0      0     0
+4ceacb8c  unnamed           2026-05-25 00:40  0      0     0
+a9df8943  portfolio_demo    2026-05-25 00:39  1      0     0
+8a56043c  unnamed           2026-05-25 00:39  0      0     0
+cca14d8b  unnamed           2026-05-25 00:15  0      0     0
+888530aa  unnamed           2026-05-25 00:15  0      0     0
+d72eed9d  unnamed           2026-05-25 00:15  0      0     0
+25fe313b  unnamed           2026-05-25 00:14  0      0     0
+218365c0  portfolio_demo    2026-05-25 00:13  1      0     1
+fd43bc6a  unnamed           2026-05-25 00:11  0      0     0
+741699dc  demo_final        2026-05-25 00:09  1      1     0
+38a763cd  demo_final        2026-05-25 00:03  1      0     1
+04c99a2d  unnamed           2026-05-24 23:59  0      0     0
+4db978ef  unnamed           2026-05-24 23:58  0      0     0
+3f3b9ee3  unnamed           2026-05-24 23:57  0      0     0
+114d51fa  home_network_dem  2026-05-24 23:55  1      0     1
+339b26eb  unnamed           2026-05-24 23:48  0      0     0
+1e8e51a9  unnamed           2026-05-24 23:47  0      0     0
+27605688  unnamed           2026-05-24 23:46  0      0     0
+cf5408fd  unnamed           2026-05-24 23:46  0      0     0
+```
+
+### Passive Monitor
+
+```
+[MONITOR] Watching: 192.168.0.0/28
+[MONITOR] Interval: 10s
+[MONITOR] Press Ctrl+C to stop.
+[MONITOR] Baseline: 1 devices detected.
+[MONITOR] Cycle 1 complete.
+[MONITOR] Cycle 2 complete.
+[MONITOR] Cycle 3 complete.
+[MONITOR] Cycle 4 complete.
+[MONITOR] Stopped after 4 scans.
+```
+
+### HTML Report
+
+A self-contained HTML report is available at
+`demo/demo_report.html` — open it in any browser
+to view the full interactive report including
+AI analysis and risk classification.
+
+---
+
 ## Module Reference
 
 | Module            | Role                                      |

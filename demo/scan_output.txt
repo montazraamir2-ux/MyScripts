@@ -1,0 +1,7 @@
+  Session: a9df8943 | Network: 192.168.0.0/24
+  Scanning 192.168.0.0/24 ...
+  [ALIVE] 192.168.0.1 | Ports: 22, 80
+  [SERVICE] 192.168.0.1:80 — HTTP | unknown
+  [SERVICE] 192.168.0.1:22 — SSH | Dropbear 2.0
+  Scan complete — 1 host(s) found.
+  [REPORT] /root/MyScripts/logs/report_a9df8943.html

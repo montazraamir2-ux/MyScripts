@@ -1,0 +1,9 @@
+[MONITOR] Watching: 192.168.0.0/28
+[MONITOR] Interval: 10s
+[MONITOR] Press Ctrl+C to stop.
+[MONITOR] Baseline: 1 devices detected.
+[MONITOR] Cycle 1 complete.
+[MONITOR] Cycle 2 complete.
+[MONITOR] Cycle 3 complete.
+[MONITOR] Cycle 4 complete.
+[MONITOR] Stopped after 4 scans.

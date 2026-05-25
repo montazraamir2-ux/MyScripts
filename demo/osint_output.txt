@@ -1,0 +1,8 @@
+  [OSINT] Target: 8.8.8.8 (ip)
+  [OSINT] Organisation: Google LLC
+  [OSINT] Country: US
+  [OSINT] DNS A Records: []
+  [OSINT] MX Present: no
+  [DNS] PTR: dns.google
+  [OSINT] Reputation: Google LLC
+  [OSINT] Summary: Target 8.8.8.8 is registered to Google LLC in US. No MX records detected. Shodan data unavailable — no API key provided. IP flagged as hosting/datacenter.
